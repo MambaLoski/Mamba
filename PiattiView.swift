@@ -78,83 +78,114 @@ struct MainListView: View {
                 }
             }
             .listStyle(GroupedListStyle())
-            .navigationBarTitle("Lista dei piatti")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    NavigationLink(destination: DishFormView(viewModel: viewModel)) {
-                        Image(systemName: "plus")
+                        .navigationBarTitle("Lista dei piatti")
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarTrailing) {
+                                NavigationLink(destination: DishFormView(viewModel: viewModel)) {
+                                    Image(systemName: "plus")
+                                }
+                            }
+                        }
                     }
+                    .onAppear(perform: viewModel.loadDishes)
                 }
             }
-        }
-        .onAppear(perform: viewModel.loadDishes)
-    }
-}
-extension Dish.Category: Identifiable {
-    var id: Self { self }
-}
-struct DishFormView: View {
-    @Environment(\.presentationMode) var presentationMode
-    @ObservedObject var viewModel: DishViewModel
 
-    @State private var name = ""
-    @State private var photo: UIImage? = nil
-    @State private var description = ""
-    @State private var recipe = ""
-    @State private var category: Dish.Category = .antipasto
-    @State private var duration = ""
-    @State private var difficulty = ""
+            extension Dish.Category: Identifiable {
+                var id: Self { self }
+            }
 
-    var body: some View {
-        NavigationView {
-            Form {
-                Section {
-                    TextField("Name", text: $name)
-                    Button(action: {
-                        // Add your photo picker implementation here
-                    }) {
-                        if let image = photo {
-                            Image(uiImage: image)
-                                .resizable()
-                                .scaledToFit()
-                        } else {
-                            Text("Select Photo")
+            struct DishFormView: View {
+                @Environment(\.presentationMode) var presentationMode
+                @ObservedObject var viewModel: DishViewModel
+                @State private var name = ""
+                @State private var showingImagePicker = false
+                @State private var inputImage: UIImage?
+                @State private var photo: UIImage?{
+                    didSet{
+                        guard let photo = photo else { return }
+                        viewModel.uploadImage(photo)
+                    }
+                }
+                @State private var description = ""
+                @State private var recipe = ""
+                @State private var category: Dish.Category = .antipasto
+                @State private var duration = ""
+                @State private var difficulty = ""
+
+                var body: some View {
+                    NavigationView {
+                        Form {
+                            Section {
+                                TextField("Name", text: $name)
+                                Button(action: {
+                                    // Add your photo picker implementation here
+                                    showingImagePicker = true
+                                }) {
+                                    if let image = photo {
+                                        Image(uiImage: image)
+                                            .resizable()
+                                            .scaledToFit()
+                                    } else {
+                                        Text("Select Photo")
+                                    }
+                                }
+                            }
+                            Section {
+                                TextField("Description", text: $description)
+                                TextField("Recipe", text: $recipe)
+                            }
+                            Section {
+                                Picker("Category", selection: $category) {
+                                    ForEach(Dish.Category.allCases) { category in
+                                        Text(category.rawValue).tag(category)
+                                    }
+                                }
+                                TextField("Duration", text: $duration)
+                                TextField("Difficulty", text: $difficulty)
+                            }
+                        }
+                        .navigationBarTitle("Add Dish")
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarLeading) {
+                                Button("Cancel") {
+                                    presentationMode.wrappedValue.dismiss()
+                                }
+                            }
+                            ToolbarItem(placement: .navigationBarTrailing) {
+                                Button("Save") {
+                                    guard let photo = photo, let imageData = photo.jpegData(compressionQuality: 0.7) else { return }
+                                    let newDish = Dish(name: name, photo: imageData, description: description, recipe: recipe, category: category, duration: duration, difficulty: difficulty)
+                                    viewModel.addDish(newDish)
+                                    presentationMode.wrappedValue.dismiss()
+                                }
+                                .disabled(name.isEmpty || photo == nil)
+                            }
+                        }
+                        .sheet(isPresented: $showingImagePicker, onDismiss: loadImage) {
+                            PHPickerViewController(configuration: imagePickerConfig())
                         }
                     }
                 }
-                Section {
-                    TextField("Description", text: $description)
-                    TextField("Recipe", text: $recipe)
-                }
-                Section {
-                    Picker("Category", selection: $category) {
-                        ForEach(Dish.Category.allCases) { category in
-                            Text(category.rawValue).tag(category)
+
+                func loadImage(from results: PHPickerResult) {
+                    if let provider = results.first?.itemProvider, provider.canLoadObject(ofClass: UIImage.self) {
+                        provider.loadObject(ofClass: UIImage.self) { [weak self] image, error in
+                            DispatchQueue.main.async {
+                                guard let image = image as? UIImage else { return }
+                                self?.inputImage = image
+                            }
                         }
                     }
-                    TextField("Duration", text: $duration)
-                    TextField("Difficulty", text: $difficulty)
+                }
+
+                func imagePickerConfig() -> PHPickerConfiguration { // Configure the image picker
+                    var config = PHPickerConfiguration()
+                    config.filter = .images
+                    config.selectionLimit = 1
+                    return config
                 }
             }
-            .navigationBarTitle("Add Dish")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        presentationMode.wrappedValue.dismiss()
-                    }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Save") {
-                        let newDish = Dish(name: name, photo: (photo?.jpegData(compressionQuality: 0.7))!, description: description, recipe: recipe, category: category, duration: duration, difficulty: difficulty)
-                        viewModel.addDish(newDish)
-                        presentationMode.wrappedValue.dismiss()
-                    }
-                    .disabled(name.isEmpty || photo == nil)
-                }
-            }
-        }
-    }
-}
 
 struct DishDetailView: View {
     let dish: Dish
